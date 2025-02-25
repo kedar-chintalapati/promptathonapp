@@ -12,30 +12,30 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS to hide default Streamlit elements, add a gradient background, and style widgets
+# Custom CSS to hide default Streamlit elements, remove the “Created by [NAME]” badges,
+# and create a black/dark gradient background with white text.
 CUSTOM_CSS = """
 <style>
-/* Hide Streamlit header, footer, and toolbar (Share, etc.) */
-#MainMenu, header, footer, [data-testid="stToolbar"] {
-    visibility: hidden;
-    height: 0;
-    display: none;
-}
-
-/* Hide the "Manage app" button in bottom right (Streamlit Cloud) */
-.viewerBadge_container__1QSob, .viewerBadge_link__1S137 {
+/* Hide Streamlit header, footer, toolbar, and manage app button */
+#MainMenu, header, footer, [data-testid="stToolbar"], .viewerBadge_container__1QSob, .viewerBadge_link__1S137 {
     visibility: hidden;
     display: none;
 }
 
-/* Gradient background for the entire page */
+/* Attempt to hide any leftover 'Created by...' or 'Manage App' overlays */
+[data-testid="stDecoration"] {
+    visibility: hidden;
+    display: none !important;
+}
+
+/* Black gradient background */
 html, body, [class*="css"]  {
-    background: linear-gradient(180deg, #141E30 0%, #243B55 100%) !important;
+    background: linear-gradient(180deg, #000000 0%, #141414 100%) !important;
     color: #FFFFFF !important;
     font-family: "Helvetica Neue", sans-serif;
 }
 
-/* Streamlit main block container */
+/* Main container padding */
 .block-container {
     padding-top: 2rem !important;
     padding-bottom: 2rem !important;
@@ -87,7 +87,6 @@ textarea, input, select, .css-1msw3jc {
 }
 </style>
 """
-
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 # -----------------------------------------------------
@@ -159,13 +158,70 @@ def estimate_cost(base_cost, cost_per_gram, cost_per_km, mass_g, altitude_km):
     """
     return base_cost + (cost_per_gram * mass_g) + (cost_per_km * altitude_km)
 
-# Default transport modes with baseline parameters and cost models
+# For the custom method, we’ll have a more complex cost formula to show how you can add extra parameters.
+def estimate_custom_cost(
+    base_cost,
+    cost_per_gram,
+    cost_per_km,
+    mass_g,
+    altitude_km,
+    setup_time_hours,
+    labor_rate,
+    material_factor,
+    overhead_factor
+):
+    """
+    More advanced cost formula for the user-defined method:
+      total_cost = overhead_factor * [
+         base_cost +
+         (cost_per_gram * mass_g) +
+         (cost_per_km * altitude_km) +
+         (setup_time_hours * labor_rate) +
+         (material_factor)
+      ]
+    """
+    partial = (base_cost +
+               (cost_per_gram * mass_g) +
+               (cost_per_km * altitude_km) +
+               (setup_time_hours * labor_rate) +
+               material_factor)
+    return overhead_factor * partial
+
+def simulate_custom_elevation(
+    base_elev,
+    altitude_km,
+    efficiency,
+    weather_factor,
+    wind_sensitivity,
+    wind_speed
+):
+    """
+    Example of a more advanced approach for user-defined lift method.
+    We'll reduce the final altitude if the wind speed is high and wind_sensitivity is large.
+    """
+    # Basic altitude calculation
+    base_additional = altitude_km * 1000 * efficiency * weather_factor
+    # Factor in wind penalty
+    wind_penalty = wind_speed * wind_sensitivity
+    # If wind_penalty is large, it reduces the altitude more
+    final_altitude = base_elev + base_additional - wind_penalty
+    return max(final_altitude, 0)  # Avoid negative altitudes
+
+# -----------------------------------------------------
+# Default Transport Modes
+# -----------------------------------------------------
 TRANSPORT_MODES = {
     "Helium Balloon": {
         "base_cost": 10,
         "cost_per_gram": 0.02,
         "cost_per_km": 0.2,
         "efficiency": 1.1,
+    },
+    "Weather Balloon": {
+        "base_cost": 15,
+        "cost_per_gram": 0.015,
+        "cost_per_km": 0.25,
+        "efficiency": 1.2,
     },
     "Drone": {
         "base_cost": 20,
@@ -245,10 +301,9 @@ def main():
         duck_mass = st.number_input("Rubber Duck Mass (grams)", min_value=1.0, value=10.0, step=1.0)
 
     # ---------------- Step 4: Configure Lift Methods ----------------
-    with st.expander("Step 4: Configure Lift Methods", expanded=False):
+    with st.expander("Step 4: Configure Built-in Lift Methods", expanded=False):
         st.write("""
-        Adjust the cost and efficiency parameters for each available lift method.
-        You can add or remove methods by editing the code or adjusting these parameters.
+        Adjust the cost and efficiency parameters for each **built-in** lift method.
         """)
         transport_params = {}
         for mode, params in TRANSPORT_MODES.items():
@@ -288,17 +343,64 @@ def main():
                 "cost_per_km": cost_per_km,
                 "efficiency": efficiency,
             }
-        st.write("All set? Great! Move on to the next step.")
 
-    # ---------------- Step 5: Choose Target Altitude ----------------
-    with st.expander("Step 5: Choose Target Altitude Above Base", expanded=False):
+    # ---------------- Step 5: Custom User-Defined Lift Method ----------------
+    with st.expander("Step 5: Create Your Own Custom Lift Method (Advanced)", expanded=False):
+        st.write("""
+        Define your own custom lift method with multiple parameters for a more sophisticated cost and altitude model.
+        """)
+        # Basic inputs
+        custom_method_name = st.text_input("Custom Lift Method Name", value="MyCustomMethod")
+        base_cost_custom = st.number_input("Base Cost", min_value=0.0, value=30.0, step=1.0)
+        cost_per_gram_custom = st.number_input("Cost per Gram", min_value=0.0, value=0.03, step=0.01)
+        cost_per_km_custom = st.number_input("Cost per km of Altitude", min_value=0.0, value=0.25, step=0.01)
+        efficiency_custom = st.slider("Efficiency", min_value=0.5, max_value=2.0, value=1.2, step=0.05)
+
+        st.write("**Additional Cost Parameters**")
+        colA, colB, colC, colD = st.columns(4)
+        with colA:
+            setup_time_hours = st.number_input("Setup Time (hours)", min_value=0.0, value=2.0, step=0.5)
+        with colB:
+            labor_rate = st.number_input("Labor Rate (USD/hour)", min_value=0.0, value=20.0, step=1.0)
+        with colC:
+            material_factor = st.number_input("Material Factor (USD)", min_value=0.0, value=10.0, step=1.0)
+        with colD:
+            overhead_factor = st.slider("Overhead Factor", min_value=1.0, max_value=3.0, value=1.2, step=0.1)
+
+        st.write("**Additional Altitude Parameters**")
+        wind_sensitivity = st.slider(
+            "Wind Sensitivity (Altitude Penalty per km/h Wind)",
+            min_value=0.0,
+            max_value=1.0,
+            value=0.1,
+            step=0.01
+        )
+
+        # Store the user-defined method in a dictionary
+        custom_lift_method = {
+            "name": custom_method_name,
+            "base_cost": base_cost_custom,
+            "cost_per_gram": cost_per_gram_custom,
+            "cost_per_km": cost_per_km_custom,
+            "efficiency": efficiency_custom,
+            "setup_time_hours": setup_time_hours,
+            "labor_rate": labor_rate,
+            "material_factor": material_factor,
+            "overhead_factor": overhead_factor,
+            "wind_sensitivity": wind_sensitivity,
+        }
+
+        use_custom_method = st.checkbox("Include My Custom Method in the Simulation?", value=False)
+
+    # ---------------- Step 6: Choose Target Altitude ----------------
+    with st.expander("Step 6: Choose Target Altitude Above Base", expanded=False):
         st.write("""
         Select how many kilometers above the base elevation you aim to reach.
         """)
         altitude_km = st.slider("Target Altitude (km above base)", 0.0, 30.0, 1.0, step=0.1)
 
-    # ---------------- Step 6: Run Simulation ----------------
-    with st.expander("Step 6: Run the Simulation & View Results", expanded=False):
+    # ---------------- Step 7: Run Simulation ----------------
+    with st.expander("Step 7: Run the Simulation & View Results", expanded=False):
         st.write("Click the button below to compute final elevation and costs for each method.")
         if st.button("Run Simulation", key="run_sim"):
             # Determine base_elev
@@ -319,9 +421,10 @@ def main():
                 wind_speed = st.session_state.weather_data.get("wind_speed", 0)
                 computed_weather_factor = compute_weather_factor(wind_speed)
             else:
+                wind_speed = 0
                 computed_weather_factor = manual_weather_factor
 
-            # Perform simulation
+            # Perform simulation for built-in methods
             results = []
             for mode, params in transport_params.items():
                 eff = params["efficiency"]
@@ -350,6 +453,36 @@ def main():
                     "Estimated Cost (USD)": round(total_cost, 2),
                 })
 
+            # Perform simulation for custom method if selected
+            if use_custom_method:
+                cm = custom_lift_method
+                total_elev_custom = simulate_custom_elevation(
+                    base_elev=final_base_elev,
+                    altitude_km=altitude_km,
+                    efficiency=cm["efficiency"],
+                    weather_factor=computed_weather_factor,
+                    wind_sensitivity=cm["wind_sensitivity"],
+                    wind_speed=wind_speed
+                )
+
+                total_cost_custom = estimate_custom_cost(
+                    base_cost=cm["base_cost"],
+                    cost_per_gram=cm["cost_per_gram"],
+                    cost_per_km=cm["cost_per_km"],
+                    mass_g=duck_mass,
+                    altitude_km=altitude_km,
+                    setup_time_hours=cm["setup_time_hours"],
+                    labor_rate=cm["labor_rate"],
+                    material_factor=cm["material_factor"],
+                    overhead_factor=cm["overhead_factor"]
+                )
+
+                results.append({
+                    "Mode": cm["name"],
+                    "Final Elevation (m)": round(total_elev_custom, 2),
+                    "Estimated Cost (USD)": round(total_cost_custom, 2),
+                })
+
             df_results = pd.DataFrame(results)
 
             st.success("Simulation Complete! See results below.")
@@ -373,7 +506,7 @@ def main():
             st.subheader("Elevation & Cost Comparison")
             chart_col1, chart_col2 = st.columns(2)
             with chart_col1:
-                st.markdown("**Elevation by Transportation Mode**")
+                st.markdown("**Elevation by Transportation Method**")
                 chart_elev = alt.Chart(df_results).mark_bar().encode(
                     x=alt.X("Mode:N", sort=None),
                     y=alt.Y("Final Elevation (m):Q"),
@@ -386,7 +519,7 @@ def main():
                 st.altair_chart(chart_elev, use_container_width=True)
 
             with chart_col2:
-                st.markdown("**Cost by Transportation Mode**")
+                st.markdown("**Cost by Transportation Method**")
                 chart_cost = alt.Chart(df_results).mark_bar().encode(
                     x=alt.X("Mode:N", sort=None),
                     y=alt.Y("Estimated Cost (USD):Q"),
